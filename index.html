@@ -114,6 +114,7 @@
   .dow{font-size:.7rem;color:var(--muted);text-align:center;padding-bottom:2px}
   .cell{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:.8rem;border-radius:4px;color:var(--ink)}
   .cell.wk{color:var(--muted)}
+  .cell.past{opacity:.35}
   .cell.run{background:var(--sea-soft)}
   .cell.hol-idle{background:var(--coral-soft);color:var(--coral);font-weight:700}
   .cell.hol{background:var(--coral);color:#fff;font-weight:700}
@@ -254,12 +255,12 @@
   }
 
   /* ---------- the day grid ----------
-     The grid runs a little past each end of the year so a break that spills over
+     The grid runs past each end of the year so a break that spills over
      New Year's counts in full. PTO can only land on workdays inside the chosen year,
      and never on today or a day that has already passed. */
   function buildGrid(year, enabled, todayT){
     var start = utc(year - 1, 11, 15);
-    var end = utc(year + 1, 0, 15);
+    var end = utc(year + 1, 0, 31);
     var hol = holidayMap(year, enabled);
     var days = [];
     for (var t = start; t <= end; t += DAY){
@@ -467,7 +468,7 @@
     state.stretches.forEach(function(s){ for (var x = s.startIdx; x <= s.endIdx; x++) inRun[x] = true; });
 
     var yearIdx = [];
-    state.days.forEach(function(d, i){ if (d.inYear) yearIdx.push(i); });
+    state.days.forEach(function(d, i){ if (d.t >= state.viewStartT) yearIdx.push(i); });
     strip.style.gridTemplateColumns = 'repeat(' + yearIdx.length + ', 1fr)';
     var frag = document.createDocumentFragment();
     yearIdx.forEach(function(i){
@@ -482,14 +483,15 @@
     });
     strip.appendChild(frag);
 
-    for (var m = 0; m < 12; m++){
-      var first = utc(state.year, m, 1);
-      var offset = (first - utc(state.year, 0, 1)) / DAY;
-      var span = document.createElement('span');
-      span.textContent = MON_S[m];
-      span.style.left = (offset / yearIdx.length * 100) + '%';
-      months.appendChild(span);
-    }
+    yearIdx.forEach(function(i, pos){
+      var dt = new Date(state.days[i].t);
+      if (pos === 0 || dt.getUTCDate() === 1){
+        var span = document.createElement('span');
+        span.textContent = MON_S[dt.getUTCMonth()];
+        span.style.left = (pos / yearIdx.length * 100) + '%';
+        months.appendChild(span);
+      }
+    });
   }
 
   function renderList(){
@@ -550,42 +552,50 @@
     state.stretches.forEach(function(s){ for (var x = s.startIdx; x <= s.endIdx; x++) inRun[x] = true; });
     var gridStart = state.days[0].t;
 
+    // Current year: begin at this month. Every year: finish with the following January.
+    var months = [];
+    for (var mm = new Date(state.viewStartT).getUTCMonth(); mm < 12; mm++) months.push({ y: state.year, m: mm });
+    months.push({ y: state.year + 1, m: 0 });
+
     var grid = document.createElement('div');
     grid.className = 'cal-grid';
-    for (var m = 0; m < 12; m++){
+    months.forEach(function(mo){
       var box = document.createElement('div');
       box.className = 'month';
       var h = document.createElement('h3');
-      h.textContent = MON_L[m];
+      h.textContent = MON_L[mo.m] + (mo.y !== state.year ? ' ' + mo.y : '');
       box.appendChild(h);
       var days = document.createElement('div');
       days.className = 'days';
       ['S','M','T','W','T','F','S'].forEach(function(l){
         var e = document.createElement('div'); e.className = 'dow'; e.textContent = l; days.appendChild(e);
       });
-      var first = utc(state.year, m, 1);
+      var first = utc(mo.y, mo.m, 1);
       for (var pad = 0; pad < dow(first); pad++){ days.appendChild(document.createElement('div')); }
-      var count = new Date(utc(state.year, m + 1, 0)).getUTCDate();
+      var count = new Date(utc(mo.y, mo.m + 1, 0)).getUTCDate();
       for (var dnum = 1; dnum <= count; dnum++){
-        var t = utc(state.year, m, dnum);
+        var t = utc(mo.y, mo.m, dnum);
         var idx = Math.round((t - gridStart) / DAY);
         var d = state.days[idx];
         var cell = document.createElement('div');
         var cls = 'cell';
-        if (state.pto.has(idx)) cls += ' pto';
-        else if (d.holiday) cls += inRun[idx] ? ' hol' : ' hol-idle';
-        else if (d.weekend) cls += inRun[idx] ? ' wk run' : ' wk';
+        if (d){
+          if (state.pto.has(idx)) cls += ' pto';
+          else if (d.holiday) cls += inRun[idx] ? ' hol' : ' hol-idle';
+          else if (d.weekend) cls += inRun[idx] ? ' wk run' : ' wk';
+        }
+        if (t < state.viewStartT) cls += ' past';
         cell.className = cls;
         cell.textContent = dnum;
         var tip = fmt(t, state.year);
-        if (d.holiday) tip += ' - ' + d.holiday;
-        if (state.pto.has(idx)) tip += ' - PTO day';
+        if (d && d.holiday) tip += ' - ' + d.holiday;
+        if (d && state.pto.has(idx)) tip += ' - PTO day';
         cell.title = tip;
         days.appendChild(cell);
       }
       box.appendChild(days);
       grid.appendChild(box);
-    }
+    });
     host.appendChild(grid);
   }
 
@@ -644,6 +654,7 @@
     }
     state = {
       year: year, budget: budget, days: days, pto: result.pto, used: result.used,
+      viewStartT: (year === thisYear) ? todayT + DAY : utc(year, 0, 1),
       selectable: result.selectable, stretches: buildStretches(days, result.pto, year)
     };
     state.holNote = holNote;
