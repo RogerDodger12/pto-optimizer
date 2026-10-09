@@ -67,7 +67,7 @@
   #results.on{display:block}
   #headline{font-size:clamp(1.7rem,4.6vw,2.7rem);font-weight:800;letter-spacing:-.02em;max-width:22ch}
   #subline{color:var(--muted);margin:10px 0 0;max-width:60ch}
-  #notice{margin:10px 0 0;font-weight:600;color:var(--ink);background:var(--sea-soft);padding:8px 12px;border-radius:6px;display:none;max-width:60ch}
+  #notice,#holnote{margin:10px 0 0;font-weight:600;color:var(--ink);background:var(--sea-soft);padding:8px 12px;border-radius:6px;display:none;max-width:60ch}
 
   .year-strip-wrap{margin-top:28px}
   .strip{display:grid;height:44px;gap:1px;border-radius:6px;overflow:hidden;background:var(--line)}
@@ -103,6 +103,7 @@
   .chips b.hol{background:var(--coral)}
   .stretch h3{font-size:1.2rem;font-weight:700;letter-spacing:-.01em}
   .payoff{margin:4px 0 0;font-weight:600}
+  .tag{display:inline-block;background:var(--ink);color:#fff;font-weight:600;font-size:.8rem;padding:2px 10px;border-radius:999px;margin-bottom:6px}
   .detail{margin:4px 0 0;color:var(--muted);font-size:.95rem}
   @media (max-width:560px){ .stretch{grid-template-columns:1fr} }
 
@@ -135,6 +136,15 @@
       <div class="pills" id="years"></div>
     </fieldset>
 
+    <fieldset>
+      <legend>Plan style</legend>
+      <p class="hint">Big holiday breaks saves PTO days for a full Thanksgiving week and a full Christmas to New Year's break first, then places the rest where they add the most time off.</p>
+      <div class="pills" id="styles">
+        <input type="radio" name="style" id="s-max" value="max" checked><label for="s-max">Most total days off</label>
+        <input type="radio" name="style" id="s-hol" value="holiday"><label for="s-hol">Big holiday breaks</label>
+      </div>
+    </fieldset>
+
     <div class="row">
       <div>
         <label class="field-label" for="pto">PTO days available</label>
@@ -155,6 +165,7 @@
     <h2 id="headline"></h2>
     <p id="subline"></p>
     <p id="notice"></p>
+    <p id="holnote"></p>
 
     <div class="year-strip-wrap">
       <div class="strip" id="strip" role="img" aria-label="Year overview of your days off"></div>
@@ -268,7 +279,7 @@
      Score = PTO days used + weekend/holiday days that end up inside a break containing PTO.
      State per day: 0 = working, 1..P = in a break with no PTO yet (that many days so far),
      P+1 = in a break that already contains PTO. */
-  function optimize(days, budget){
+  function optimize(days, budget, forced){
     var n = days.length;
     var P = 7, PT = P + 1, S = P + 2;
     var selectable = 0;
@@ -285,6 +296,7 @@
       var d = days[i];
       var nxt = new Int32Array(S * W).fill(NEG);
       var base = i * S * W;
+      var isForced = !!(forced && forced.has(i));
       for (var s = 0; s < S; s++){
         for (var k = 0; k <= K; k++){
           var v = cur[s * W + k];
@@ -298,7 +310,7 @@
             else { ns = PT; add = 1; }
           } else { ns = 0; add = 0; }
           var idx = ns * W + k;
-          if (v + add > nxt[idx]){ nxt[idx] = v + add; back[base + idx] = s * 2; }
+          if (!isForced && v + add > nxt[idx]){ nxt[idx] = v + add; back[base + idx] = s * 2; }
 
           // Option B: use a PTO day today
           if (d.selectable && k < K){
@@ -323,7 +335,7 @@
       if (info & 1){ pto.add(j); kk--; }
       st = info >> 1;
     }
-    return { pto: pto, used: K, selectable: selectable };
+    return { pto: pto, used: K, selectable: selectable, score: best };
   }
 
   function buildStretches(days, pto, year){
@@ -346,6 +358,51 @@
       i = j;
     }
     return out;
+  }
+
+  /* ---------- big holiday breaks ----------
+     Thanksgiving break = the whole Monday-to-Friday week of Thanksgiving.
+     Christmas break = every day from Christmas (observed) through New Year's Day (observed).
+     The PTO days these need are locked in first, then the optimizer spends the rest. */
+  function holidayWindows(year, days, todayT){
+    var base = days[0].t;
+    function idxOf(t){ return Math.round((t - base) / DAY); }
+    var thanks = nthWeekday(year, 10, 4, 4);
+    var xmas = observed(utc(year, 11, 25));
+    var defs = [
+      { name:'Thanksgiving break', from: thanks - 3 * DAY, to: thanks + DAY, mark: thanks },
+      { name:"Christmas to New Year's break", from: xmas, to: observed(utc(year + 1, 0, 1)), mark: xmas }
+    ];
+    var out = [];
+    defs.forEach(function(w){
+      if (w.from < todayT) return;
+      var idxs = [];
+      for (var t = w.from; t <= w.to; t += DAY){
+        var i = idxOf(t);
+        if (days[i] && days[i].selectable) idxs.push(i);
+      }
+      out.push({ name: w.name, idxs: idxs, markIdx: idxOf(w.mark) });
+    });
+    return out;
+  }
+
+  function planHoliday(days, budget, wins){
+    var candidates = [];
+    var totalCost = 0;
+    wins.forEach(function(w){ totalCost += w.idxs.length; });
+    if (wins.length && totalCost <= budget){
+      candidates.push(wins);
+    } else {
+      wins.forEach(function(w){ if (w.idxs.length <= budget) candidates.push([w]); });
+    }
+    var best = null;
+    candidates.forEach(function(c){
+      var forced = new Set();
+      c.forEach(function(w){ w.idxs.forEach(function(i){ forced.add(i); }); });
+      var r = optimize(days, budget, forced);
+      if (!best || r.score > best.result.score) best = { result: r, built: c };
+    });
+    return best;
   }
 
   /* ---------- setup the controls ---------- */
@@ -390,6 +447,9 @@
       plural(state.used, 'PTO day', 'PTO days') + (state.used === 1 ? ' becomes ' : ' become ') + plural(total, 'day', 'days') + ' off in ' + state.year + '.';
     document.getElementById('subline').textContent =
       'That is ' + plural(bonus, 'extra day', 'extra days') + ' from weekends and holidays, or about ' + ratio + ' days off for every PTO day.';
+    var hn = document.getElementById('holnote');
+    if (state.holNote){ hn.style.display = 'block'; hn.textContent = state.holNote; }
+    else { hn.style.display = 'none'; }
     var notice = document.getElementById('notice');
     if (state.budget > state.selectable){
       notice.style.display = 'block';
@@ -456,6 +516,12 @@
       }
 
       var main = document.createElement('div');
+      if (s.tag){
+        var tg = document.createElement('span');
+        tg.className = 'tag'; tg.textContent = s.tag;
+        main.appendChild(tg);
+        main.appendChild(document.createElement('br'));
+      }
       var h = document.createElement('h3');
       h.textContent = fmt(state.days[s.startIdx].t, state.year) + ' to ' + fmt(state.days[s.endIdx].t, state.year);
       var payoff = document.createElement('p');
@@ -544,7 +610,32 @@
     document.querySelectorAll('.hol-toggle:checked').forEach(function(i){ enabled.add(i.value); });
 
     var days = buildGrid(year, enabled, todayT);
-    var result = optimize(days, budget);
+    var style = document.querySelector('input[name="style"]:checked').value;
+    var result, built = [], holNote = '';
+    if (style === 'holiday'){
+      var wins = holidayWindows(year, days, todayT);
+      var plan = wins.length ? planHoliday(days, budget, wins) : null;
+      if (plan){
+        result = plan.result; built = plan.built;
+        var reserved = 0, parts = [];
+        built.forEach(function(w){ reserved += w.idxs.length; parts.push(plural(w.idxs.length, 'PTO day', 'PTO days') + ' for ' + w.name.replace(' break', '')); });
+        var rest = result.used - reserved;
+        holNote = (built.length === wins.length
+          ? 'Holiday breaks are built first: ' + parts.join(' and ') + '.'
+          : 'Your PTO covers only one full holiday break, so this plan builds the one that gives the most time off: ' + parts.join('') + '.')
+          + (rest > 0 ? ' The other ' + plural(rest, 'PTO day', 'PTO days') + (rest === 1 ? ' goes' : ' go') + ' where ' + (rest === 1 ? 'it adds' : 'they add') + ' the most time off.' : '');
+      } else {
+        result = optimize(days, budget);
+        if (!wins.length){
+          holNote = 'Both holiday breaks have already started or passed in ' + year + ', so this is the best plan using the days that are left.';
+        } else {
+          var needs = wins.map(function(w){ return w.name.replace(' break', '') + ' (' + plural(w.idxs.length, 'PTO day', 'PTO days') + ')'; }).join(' and ');
+          holNote = 'You need more PTO days to build a full holiday break: ' + needs + '. This is the best plan for the days you have.';
+        }
+      }
+    } else {
+      result = optimize(days, budget);
+    }
     if (result.selectable === 0){
       messageEl.textContent = 'There are no workdays left in ' + year + '. Pick a later year.';
       resultsEl.classList.remove('on');
@@ -555,6 +646,12 @@
       year: year, budget: budget, days: days, pto: result.pto, used: result.used,
       selectable: result.selectable, stretches: buildStretches(days, result.pto, year)
     };
+    state.holNote = holNote;
+    built.forEach(function(w){
+      state.stretches.forEach(function(s){
+        if (w.markIdx >= s.startIdx && w.markIdx <= s.endIdx) s.tag = w.name;
+      });
+    });
     renderSummary();
     renderStrip();
     renderList();
