@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PTO Optimizer</title>
+<meta name="description" content="Enter your PTO days and get the single best plan for turning them into the most time off, using weekends and US federal holidays.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12263A;
+    --mist:#EEF4F5;
+    --paper:#FFFFFF;
+    --line:#CBDADD;
+    --sea:#0F7C86;
+    --sea-soft:#CFE9EB;
+    --sun:#FFB81C;
+    --coral:#C8432B;
+    --coral-soft:#F6D5CD;
+    --muted:#4F6574;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--mist);color:var(--ink);
+    font:16px/1.55 Figtree,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:40px 20px 72px}
+  h1,h2,h3{font-family:"Bricolage Grotesque",Figtree,system-ui,sans-serif;margin:0;line-height:1.1}
+  h1{font-size:clamp(2.3rem,6.5vw,3.8rem);font-weight:800;letter-spacing:-.025em}
+  .lede{max-width:56ch;color:var(--muted);margin:14px 0 0;font-size:1.05rem}
+
+  /* ---------- controls ---------- */
+  .controls{margin-top:34px;padding-top:26px;border-top:2px solid var(--ink);display:grid;gap:26px}
+  fieldset{border:0;margin:0;padding:0;min-width:0}
+  legend,.field-label{font-weight:700;font-size:.98rem;padding:0;margin-bottom:10px;display:block}
+  .hint{color:var(--muted);font-size:.9rem;margin:0 0 10px;max-width:60ch}
+  .pills{display:flex;flex-wrap:wrap;gap:8px}
+  .pills input{position:absolute;opacity:0;pointer-events:none}
+  .pills label{
+    display:inline-block;padding:8px 16px;border:1.5px solid var(--ink);border-radius:999px;
+    background:var(--paper);cursor:pointer;font-weight:600;font-size:.95rem;user-select:none;
+  }
+  .pills input:checked + label{background:var(--ink);color:#fff}
+  .pills.hol input:checked + label{background:var(--sea);border-color:var(--sea);color:#fff}
+  .pills input:focus-visible + label{outline:3px solid var(--sun);outline-offset:2px}
+  .pills label:hover{border-color:var(--sea)}
+
+  .row{display:flex;flex-wrap:wrap;gap:22px 40px;align-items:flex-end}
+  #pto{
+    width:7.5ch;font:700 1.6rem/1 "Bricolage Grotesque",Figtree,sans-serif;
+    padding:10px 12px;border:1.5px solid var(--ink);border-radius:8px;background:var(--paper);color:var(--ink);
+  }
+  #pto:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+  .go{
+    font:700 1rem Figtree,system-ui,sans-serif;background:var(--ink);color:#fff;border:0;border-radius:8px;
+    padding:15px 26px;cursor:pointer;
+  }
+  .go:hover{background:var(--sea)}
+  .go:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+  .message{margin:0;color:var(--coral);font-weight:600;min-height:1.4em}
+
+  /* ---------- results ---------- */
+  #results{margin-top:44px;display:none}
+  #results.on{display:block}
+  #headline{font-size:clamp(1.7rem,4.6vw,2.7rem);font-weight:800;letter-spacing:-.02em;max-width:22ch}
+  #subline{color:var(--muted);margin:10px 0 0;max-width:60ch}
+  #notice{margin:10px 0 0;font-weight:600;color:var(--ink);background:var(--sea-soft);padding:8px 12px;border-radius:6px;display:none;max-width:60ch}
+
+  .year-strip-wrap{margin-top:28px}
+  .strip{display:grid;height:44px;gap:1px;border-radius:6px;overflow:hidden;background:var(--line)}
+  .strip i{display:block;background:var(--paper)}
+  .strip i.run{background:var(--sea)}
+  .strip i.pto{background:var(--sun)}
+  .strip i.hol{background:var(--coral)}
+  .strip i.hol-idle{background:var(--coral-soft)}
+  .months{position:relative;height:20px;margin-top:6px}
+  .months span{position:absolute;font-size:.72rem;color:var(--muted)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;padding:0;list-style:none;font-size:.86rem;color:var(--muted)}
+  .legend li{display:flex;align-items:center;gap:7px}
+  .sw{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid var(--line);background:var(--paper)}
+  .sw.pto{background:var(--sun);border-color:var(--sun)}
+  .sw.hol{background:var(--coral);border-color:var(--coral)}
+  .sw.run{background:var(--sea);border-color:var(--sea)}
+  .sw.wk{background:var(--sea-soft);border-color:var(--sea-soft)}
+
+  .view-toggle{display:flex;gap:0;margin:34px 0 18px;width:max-content;border:1.5px solid var(--ink);border-radius:8px;overflow:hidden}
+  .view-toggle button{
+    font:600 .95rem Figtree,system-ui,sans-serif;padding:9px 22px;border:0;background:var(--paper);color:var(--ink);cursor:pointer;
+  }
+  .view-toggle button + button{border-left:1.5px solid var(--ink)}
+  .view-toggle button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .view-toggle button:focus-visible{outline:3px solid var(--sun);outline-offset:-3px}
+
+  /* list view */
+  .stretches{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+  .stretch{display:grid;grid-template-columns:minmax(120px,200px) 1fr;gap:12px 24px;padding:18px 0;border-bottom:1px solid var(--line)}
+  .chips{display:flex;flex-wrap:wrap;gap:2px;align-content:flex-start}
+  .chips b{display:block;width:12px;height:26px;border-radius:2px;background:var(--sea-soft)}
+  .chips b.pto{background:var(--sun)}
+  .chips b.hol{background:var(--coral)}
+  .stretch h3{font-size:1.2rem;font-weight:700;letter-spacing:-.01em}
+  .payoff{margin:4px 0 0;font-weight:600}
+  .detail{margin:4px 0 0;color:var(--muted);font-size:.95rem}
+  @media (max-width:560px){ .stretch{grid-template-columns:1fr} }
+
+  /* calendar view */
+  .cal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(224px,1fr));gap:26px 22px}
+  .month h3{font-size:1.05rem;font-weight:700;margin-bottom:8px}
+  .days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+  .dow{font-size:.7rem;color:var(--muted);text-align:center;padding-bottom:2px}
+  .cell{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:.8rem;border-radius:4px;color:var(--ink)}
+  .cell.wk{color:var(--muted)}
+  .cell.run{background:var(--sea-soft)}
+  .cell.hol-idle{background:var(--coral-soft);color:var(--coral);font-weight:700}
+  .cell.hol{background:var(--coral);color:#fff;font-weight:700}
+  .cell.pto{background:var(--sun);color:var(--ink);font-weight:700}
+
+  .fine{margin-top:36px;color:var(--muted);font-size:.86rem;max-width:68ch}
+  noscript{display:block;margin-top:24px;color:var(--coral);font-weight:600}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>PTO Optimizer</h1>
+  <p class="lede">Enter how many PTO days you have and get the one plan that turns them into the most time off, using weekends and US federal holidays.</p>
+
+  <noscript>This tool needs JavaScript turned on to work.</noscript>
+
+  <section class="controls" aria-label="Plan settings">
+    <fieldset>
+      <legend>Year to plan</legend>
+      <div class="pills" id="years"></div>
+    </fieldset>
+
+    <div class="row">
+      <div>
+        <label class="field-label" for="pto">PTO days available</label>
+        <input id="pto" type="number" inputmode="numeric" min="1" max="260" value="10">
+      </div>
+      <button class="go" id="go" type="button">Find my best plan</button>
+    </div>
+    <p class="message" id="message" role="alert"></p>
+
+    <fieldset>
+      <legend>Holidays your employer gives you</legend>
+      <p class="hint">The most common ones are on. Turn on any others your employer observes.</p>
+      <div class="pills hol" id="holidays"></div>
+    </fieldset>
+  </section>
+
+  <section id="results" aria-live="polite">
+    <h2 id="headline"></h2>
+    <p id="subline"></p>
+    <p id="notice"></p>
+
+    <div class="year-strip-wrap">
+      <div class="strip" id="strip" role="img" aria-label="Year overview of your days off"></div>
+      <div class="months" id="months" aria-hidden="true"></div>
+      <ul class="legend">
+        <li><span class="sw pto"></span>PTO day</li>
+        <li><span class="sw hol"></span>Holiday</li>
+        <li><span class="sw run"></span>Weekend in a long break</li>
+      </ul>
+    </div>
+
+    <div class="view-toggle" role="group" aria-label="Choose a view">
+      <button type="button" id="btn-list" aria-pressed="true">List</button>
+      <button type="button" id="btn-cal" aria-pressed="false">Calendar</button>
+    </div>
+
+    <div id="view-list"></div>
+    <div id="view-cal" hidden></div>
+
+    <p class="fine">Holiday dates follow the US federal calendar. When a holiday lands on a Saturday it is observed the Friday before, and when it lands on a Sunday it is observed the Monday after. Check your employer's own holiday calendar before booking time off.</p>
+  </section>
+</main>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ---------- date helpers (all UTC so daylight saving never shifts a day) ---------- */
+  var DAY = 86400000;
+  var MON_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var MON_L = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DOW_S = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  function utc(y, m, d){ return Date.UTC(y, m, d); }
+  function dow(t){ return new Date(t).getUTCDay(); }
+  function yearOf(t){ return new Date(t).getUTCFullYear(); }
+  function plural(n, one, many){ return n + ' ' + (n === 1 ? one : many); }
+  function fmt(t, year){
+    var d = new Date(t);
+    var s = DOW_S[d.getUTCDay()] + ', ' + MON_S[d.getUTCMonth()] + ' ' + d.getUTCDate();
+    return d.getUTCFullYear() !== year ? s + ', ' + d.getUTCFullYear() : s;
+  }
+  function nthWeekday(y, m, wd, n){
+    var first = utc(y, m, 1);
+    var offset = (wd - dow(first) + 7) % 7;
+    return first + (offset + (n - 1) * 7) * DAY;
+  }
+  function lastWeekday(y, m, wd){
+    var last = utc(y, m + 1, 0);
+    var offset = (dow(last) - wd + 7) % 7;
+    return last - offset * DAY;
+  }
+  function observed(t){
+    var w = dow(t);
+    if (w === 6) return t - DAY;
+    if (w === 0) return t + DAY;
+    return t;
+  }
+
+  /* ---------- holidays ---------- */
+  var HOLIDAYS = [
+    { id:'newyear',      name:"New Year's Day",             core:true,  date:function(y){ return utc(y,0,1); } },
+    { id:'mlk',          name:'Martin Luther King Jr. Day', core:false, date:function(y){ return nthWeekday(y,0,1,3); } },
+    { id:'presidents',   name:"Presidents' Day",            core:false, date:function(y){ return nthWeekday(y,1,1,3); } },
+    { id:'memorial',     name:'Memorial Day',               core:true,  date:function(y){ return lastWeekday(y,4,1); } },
+    { id:'juneteenth',   name:'Juneteenth',                 core:false, date:function(y){ return utc(y,5,19); } },
+    { id:'july4',        name:'Independence Day',           core:true,  date:function(y){ return utc(y,6,4); } },
+    { id:'labor',        name:'Labor Day',                  core:true,  date:function(y){ return nthWeekday(y,8,1,1); } },
+    { id:'columbus',     name:'Columbus Day',               core:false, date:function(y){ return nthWeekday(y,9,1,2); } },
+    { id:'veterans',     name:'Veterans Day',               core:false, date:function(y){ return utc(y,10,11); } },
+    { id:'thanksgiving', name:'Thanksgiving',               core:true,  date:function(y){ return nthWeekday(y,10,4,4); } },
+    { id:'christmas',    name:'Christmas Day',              core:true,  date:function(y){ return utc(y,11,25); } }
+  ];
+
+  function holidayMap(year, enabled){
+    var map = new Map();
+    for (var y = year - 1; y <= year + 1; y++){
+      HOLIDAYS.forEach(function(h){
+        if (!enabled.has(h.id)) return;
+        var actual = h.date(y);
+        var obs = observed(actual);
+        map.set(obs, obs === actual ? h.name : h.name + ' (observed)');
+      });
+    }
+    return map;
+  }
+
+  /* ---------- the day grid ----------
+     The grid runs a little past each end of the year so a break that spills over
+     New Year's counts in full. PTO can only land on workdays inside the chosen year,
+     and never on a day that has already passed. */
+  function buildGrid(year, enabled, todayT){
+    var start = utc(year - 1, 11, 15);
+    var end = utc(year + 1, 0, 15);
+    var hol = holidayMap(year, enabled);
+    var days = [];
+    for (var t = start; t <= end; t += DAY){
+      var w = dow(t);
+      var weekend = (w === 0 || w === 6);
+      var hname = hol.get(t) || null;
+      var free = weekend || !!hname;
+      var inYear = yearOf(t) === year;
+      days.push({ t:t, weekend:weekend, holiday:hname, free:free, inYear:inYear,
+                  selectable: inYear && !free && t >= todayT });
+    }
+    return days;
+  }
+
+  /* ---------- the optimizer ----------
+     Exact dynamic programming, so the answer is the true best plan, not an estimate.
+     Score = PTO days used + weekend/holiday days that end up inside a break containing PTO.
+     State per day: 0 = working, 1..P = in a break with no PTO yet (that many days so far),
+     P+1 = in a break that already contains PTO. */
+  function optimize(days, budget){
+    var n = days.length;
+    var P = 7, PT = P + 1, S = P + 2;
+    var selectable = 0;
+    days.forEach(function(d){ if (d.selectable) selectable++; });
+    var K = Math.min(budget, selectable);
+    var W = K + 1;
+    var NEG = -1000000000;
+
+    var cur = new Int32Array(S * W).fill(NEG);
+    cur[0] = 0;
+    var back = new Int16Array(n * S * W);
+
+    for (var i = 0; i < n; i++){
+      var d = days[i];
+      var nxt = new Int32Array(S * W).fill(NEG);
+      var base = i * S * W;
+      for (var s = 0; s < S; s++){
+        for (var k = 0; k <= K; k++){
+          var v = cur[s * W + k];
+          if (v <= NEG / 2) continue;
+
+          // Option A: do not use PTO today
+          var ns, add;
+          if (d.free){
+            if (s === 0){ ns = 1; add = 0; }
+            else if (s <= P){ ns = Math.min(s + 1, P); add = 0; }
+            else { ns = PT; add = 1; }
+          } else { ns = 0; add = 0; }
+          var idx = ns * W + k;
+          if (v + add > nxt[idx]){ nxt[idx] = v + add; back[base + idx] = s * 2; }
+
+          // Option B: use a PTO day today
+          if (d.selectable && k < K){
+            var add2 = (s === 0 || s === PT) ? 1 : s + 1;
+            var idx2 = PT * W + (k + 1);
+            if (v + add2 > nxt[idx2]){ nxt[idx2] = v + add2; back[base + idx2] = s * 2 + 1; }
+          }
+        }
+      }
+      cur = nxt;
+    }
+
+    var bestS = 0, best = NEG;
+    for (var q = 0; q < S; q++){
+      if (cur[q * W + K] > best){ best = cur[q * W + K]; bestS = q; }
+    }
+
+    var pto = new Set();
+    var st = bestS, kk = K;
+    for (var j = n - 1; j >= 0; j--){
+      var info = back[j * S * W + st * W + kk];
+      if (info & 1){ pto.add(j); kk--; }
+      st = info >> 1;
+    }
+    return { pto: pto, used: K, selectable: selectable };
+  }
+
+  function buildStretches(days, pto, year){
+    var out = [], n = days.length, i = 0;
+    while (i < n){
+      if (!(days[i].free || pto.has(i))){ i++; continue; }
+      var j = i, p = 0;
+      while (j < n && (days[j].free || pto.has(j))){ if (pto.has(j)) p++; j++; }
+      if (p > 0){
+        var holidays = [], ranges = [], runStart = -1;
+        for (var x = i; x < j; x++){
+          if (days[x].holiday && holidays.indexOf(days[x].holiday) === -1) holidays.push(days[x].holiday);
+          if (pto.has(x)){
+            if (runStart === -1) runStart = x;
+            if (!pto.has(x + 1) || x + 1 >= j){ ranges.push([runStart, x]); runStart = -1; }
+          }
+        }
+        out.push({ startIdx:i, endIdx:j - 1, pto:p, length:j - i, holidays:holidays, ranges:ranges });
+      }
+      i = j;
+    }
+    return out;
+  }
+
+  /* ---------- setup the controls ---------- */
+  var now = new Date();
+  var todayT = utc(now.getFullYear(), now.getMonth(), now.getDate());
+  var thisYear = now.getFullYear();
+  var YEARS = [0,1,2,3,4].map(function(o){ return thisYear + o; }); // rolls forward automatically each January
+
+  var yearsEl = document.getElementById('years');
+  YEARS.forEach(function(y, i){
+    var input = document.createElement('input');
+    input.type = 'radio'; input.name = 'year'; input.id = 'y' + y; input.value = y;
+    if (i === 0) input.checked = true;
+    var label = document.createElement('label');
+    label.htmlFor = input.id; label.textContent = y;
+    yearsEl.appendChild(input); yearsEl.appendChild(label);
+  });
+
+  var holEl = document.getElementById('holidays');
+  HOLIDAYS.forEach(function(h){
+    var input = document.createElement('input');
+    input.type = 'checkbox'; input.className = 'hol-toggle'; input.id = 'h-' + h.id; input.value = h.id;
+    input.checked = h.core;
+    var label = document.createElement('label');
+    label.htmlFor = input.id; label.textContent = h.name;
+    holEl.appendChild(input); holEl.appendChild(label);
+  });
+
+  var ptoInput = document.getElementById('pto');
+  var messageEl = document.getElementById('message');
+  var resultsEl = document.getElementById('results');
+  var state = null;
+  var hasResult = false;
+
+  /* ---------- rendering ---------- */
+  function renderSummary(){
+    var total = 0;
+    state.stretches.forEach(function(s){ total += s.length; });
+    var bonus = total - state.used;
+    var ratio = state.used > 0 ? (total / state.used).toFixed(1) : '0';
+    document.getElementById('headline').textContent =
+      plural(state.used, 'PTO day', 'PTO days') + (state.used === 1 ? ' becomes ' : ' become ') + plural(total, 'day', 'days') + ' off in ' + state.year + '.';
+    document.getElementById('subline').textContent =
+      'That is ' + plural(bonus, 'extra day', 'extra days') + ' from weekends and holidays, or about ' + ratio + ' days off for every PTO day.';
+    var notice = document.getElementById('notice');
+    if (state.budget > state.selectable){
+      notice.style.display = 'block';
+      notice.textContent = 'You entered ' + state.budget + ' PTO days, but only ' + state.selectable + ' workdays are left to use in ' + state.year + ', so the plan uses all of them.';
+    } else {
+      notice.style.display = 'none';
+    }
+  }
+
+  function renderStrip(){
+    var strip = document.getElementById('strip');
+    var months = document.getElementById('months');
+    strip.innerHTML = ''; months.innerHTML = '';
+    var inRun = new Array(state.days.length).fill(false);
+    state.stretches.forEach(function(s){ for (var x = s.startIdx; x <= s.endIdx; x++) inRun[x] = true; });
+
+    var yearIdx = [];
+    state.days.forEach(function(d, i){ if (d.inYear) yearIdx.push(i); });
+    strip.style.gridTemplateColumns = 'repeat(' + yearIdx.length + ', 1fr)';
+    var frag = document.createDocumentFragment();
+    yearIdx.forEach(function(i){
+      var d = state.days[i];
+      var el = document.createElement('i');
+      if (state.pto.has(i)) el.className = 'pto';
+      else if (inRun[i] && d.holiday) el.className = 'hol';
+      else if (inRun[i]) el.className = 'run';
+      else if (d.holiday) el.className = 'hol-idle';
+      el.title = fmt(d.t, state.year) + (d.holiday ? ' - ' + d.holiday : '') + (state.pto.has(i) ? ' - PTO day' : '');
+      frag.appendChild(el);
+    });
+    strip.appendChild(frag);
+
+    for (var m = 0; m < 12; m++){
+      var first = utc(state.year, m, 1);
+      var offset = (first - utc(state.year, 0, 1)) / DAY;
+      var span = document.createElement('span');
+      span.textContent = MON_S[m];
+      span.style.left = (offset / yearIdx.length * 100) + '%';
+      months.appendChild(span);
+    }
+  }
+
+  function renderList(){
+    var host = document.getElementById('view-list');
+    host.innerHTML = '';
+    if (!state.stretches.length){
+      host.textContent = 'No breaks to show. Try entering at least one PTO day.';
+      return;
+    }
+    var ul = document.createElement('ul');
+    ul.className = 'stretches';
+    state.stretches.forEach(function(s){
+      var li = document.createElement('li');
+      li.className = 'stretch';
+
+      var chips = document.createElement('div');
+      chips.className = 'chips';
+      chips.setAttribute('aria-hidden', 'true');
+      for (var x = s.startIdx; x <= s.endIdx; x++){
+        var b = document.createElement('b');
+        if (state.pto.has(x)) b.className = 'pto';
+        else if (state.days[x].holiday) b.className = 'hol';
+        chips.appendChild(b);
+      }
+
+      var main = document.createElement('div');
+      var h = document.createElement('h3');
+      h.textContent = fmt(state.days[s.startIdx].t, state.year) + ' to ' + fmt(state.days[s.endIdx].t, state.year);
+      var payoff = document.createElement('p');
+      payoff.className = 'payoff';
+      payoff.textContent = plural(s.length, 'day', 'days') + ' off for ' + plural(s.pto, 'PTO day', 'PTO days');
+      var detail = document.createElement('p');
+      detail.className = 'detail';
+      var takeOff = s.ranges.map(function(r){
+        return r[0] === r[1]
+          ? fmt(state.days[r[0]].t, state.year)
+          : fmt(state.days[r[0]].t, state.year) + ' to ' + fmt(state.days[r[1]].t, state.year);
+      }).join('; ');
+      detail.textContent = 'Take off ' + takeOff + '.' + (s.holidays.length ? ' Includes ' + s.holidays.join(', ') + '.' : '');
+      main.appendChild(h); main.appendChild(payoff); main.appendChild(detail);
+
+      li.appendChild(chips); li.appendChild(main);
+      ul.appendChild(li);
+    });
+    host.appendChild(ul);
+  }
+
+  function renderCalendar(){
+    var host = document.getElementById('view-cal');
+    host.innerHTML = '';
+    var inRun = new Array(state.days.length).fill(false);
+    state.stretches.forEach(function(s){ for (var x = s.startIdx; x <= s.endIdx; x++) inRun[x] = true; });
+    var gridStart = state.days[0].t;
+
+    var grid = document.createElement('div');
+    grid.className = 'cal-grid';
+    for (var m = 0; m < 12; m++){
+      var box = document.createElement('div');
+      box.className = 'month';
+      var h = document.createElement('h3');
+      h.textContent = MON_L[m];
+      box.appendChild(h);
+      var days = document.createElement('div');
+      days.className = 'days';
+      ['S','M','T','W','T','F','S'].forEach(function(l){
+        var e = document.createElement('div'); e.className = 'dow'; e.textContent = l; days.appendChild(e);
+      });
+      var first = utc(state.year, m, 1);
+      for (var pad = 0; pad < dow(first); pad++){ days.appendChild(document.createElement('div')); }
+      var count = new Date(utc(state.year, m + 1, 0)).getUTCDate();
+      for (var dnum = 1; dnum <= count; dnum++){
+        var t = utc(state.year, m, dnum);
+        var idx = Math.round((t - gridStart) / DAY);
+        var d = state.days[idx];
+        var cell = document.createElement('div');
+        var cls = 'cell';
+        if (state.pto.has(idx)) cls += ' pto';
+        else if (d.holiday) cls += inRun[idx] ? ' hol' : ' hol-idle';
+        else if (d.weekend) cls += inRun[idx] ? ' wk run' : ' wk';
+        cell.className = cls;
+        cell.textContent = dnum;
+        var tip = fmt(t, state.year);
+        if (d.holiday) tip += ' - ' + d.holiday;
+        if (state.pto.has(idx)) tip += ' - PTO day';
+        cell.title = tip;
+        days.appendChild(cell);
+      }
+      box.appendChild(days);
+      grid.appendChild(box);
+    }
+    host.appendChild(grid);
+  }
+
+  function setView(which){
+    var list = which === 'list';
+    document.getElementById('view-list').hidden = !list;
+    document.getElementById('view-cal').hidden = list;
+    document.getElementById('btn-list').setAttribute('aria-pressed', list ? 'true' : 'false');
+    document.getElementById('btn-cal').setAttribute('aria-pressed', list ? 'false' : 'true');
+  }
+
+  /* ---------- run it ---------- */
+  function compute(){
+    messageEl.textContent = '';
+    var year = parseInt(document.querySelector('input[name="year"]:checked').value, 10);
+    var budget = parseInt(ptoInput.value, 10);
+    if (!isFinite(budget) || budget < 1 || budget > 260){
+      messageEl.textContent = 'Enter a whole number of PTO days from 1 to 260.';
+      return;
+    }
+    var enabled = new Set();
+    document.querySelectorAll('.hol-toggle:checked').forEach(function(i){ enabled.add(i.value); });
+
+    var days = buildGrid(year, enabled, todayT);
+    var result = optimize(days, budget);
+    if (result.selectable === 0){
+      messageEl.textContent = 'There are no workdays left in ' + year + '. Pick a later year.';
+      resultsEl.classList.remove('on');
+      hasResult = false;
+      return;
+    }
+    state = {
+      year: year, budget: budget, days: days, pto: result.pto, used: result.used,
+      selectable: result.selectable, stretches: buildStretches(days, result.pto, year)
+    };
+    renderSummary();
+    renderStrip();
+    renderList();
+    renderCalendar();
+    resultsEl.classList.add('on');
+    hasResult = true;
+  }
+
+  document.getElementById('go').addEventListener('click', function(){
+    compute();
+    if (hasResult) resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  ptoInput.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ compute(); } });
+  document.querySelector('.controls').addEventListener('change', function(){ if (hasResult) compute(); });
+  document.getElementById('btn-list').addEventListener('click', function(){ setView('list'); });
+  document.getElementById('btn-cal').addEventListener('click', function(){ setView('cal'); });
+})();
+</script>
+</body>
+</html>
