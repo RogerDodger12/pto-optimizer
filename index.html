@@ -256,7 +256,7 @@
   /* ---------- the day grid ----------
      The grid runs a little past each end of the year so a break that spills over
      New Year's counts in full. PTO can only land on workdays inside the chosen year,
-     and never on a day that has already passed. */
+     and never on today or a day that has already passed. */
   function buildGrid(year, enabled, todayT){
     var start = utc(year - 1, 11, 15);
     var end = utc(year + 1, 0, 15);
@@ -269,7 +269,7 @@
       var free = weekend || !!hname;
       var inYear = yearOf(t) === year;
       days.push({ t:t, weekend:weekend, holiday:hname, free:free, inYear:inYear,
-                  selectable: inYear && !free && t >= todayT });
+                  selectable: inYear && !free && t > todayT });
     }
     return days;
   }
@@ -375,7 +375,7 @@
     ];
     var out = [];
     defs.forEach(function(w){
-      if (w.from < todayT) return;
+      if (w.from <= todayT) return;
       var idxs = [];
       for (var t = w.from; t <= w.to; t += DAY){
         var i = idxOf(t);
